@@ -48,7 +48,10 @@ public class StockTradeRecordProcessor implements IRecordProcessor {
 
     // Aggregates stats for stock trades
     private StockStats stockStats = new StockStats();
-
+    
+    // Start riak client
+    private RiakClient myClient = RiakClient.newClient("192.168.1.1");
+    
     /**
      * {@inheritDoc}
      */
@@ -100,7 +103,19 @@ public class StockTradeRecordProcessor implements IRecordProcessor {
             LOG.warn("Skipping record. Unable to parse record into StockTrade. Partition Key: " + record.getPartitionKey());
             return;
         }
-        stockStats.addStockTrade(trade);
+        // Extract key and value from stock trade
+        String key = trade.getTickerSymbol();
+        String value = Long.toString(trade.getQuantity());
+        
+        // Lets save the trade to Riak KV
+        Namespace ns = new Namespace("default", "stock_trade_bucket");
+        Location location = new Location(ns, key);
+        RiakObject riakObject = new RiakObject();
+        riakObject.setValue(BinaryValue.create(value));
+        StoreValue store = new StoreValue.Builder(riakObject)
+                            .withLocation(location)
+                            .withOption(Option.W, new Quorum(3)).build();
+        this.myClient.execute(store);
     }
 
     /**
